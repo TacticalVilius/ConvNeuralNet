@@ -16,9 +16,6 @@ class Regularization(Enum):
 class ANN:
 
 	def __init__(self, data_dim, layer_num = 2, activation_func = relu, reg_type = Regularization.L2):
-		#activation_func = lambda x : 1 / (1 +  np.exp(-x))
-		#d_activation_func = lambda x : (1 - x) * x
-
 		self.layers = []
 		input_dim = data_dim
 		layer_size = 100
@@ -44,11 +41,12 @@ class ANN:
 
 	def forward(self, X, debug):
 		prev_layer_output = X
-		num_neurons = 0
-		num_dead_neurons = 0
+		if debug:
+			num_neurons = 0
+			num_dead_neurons = 0
 		for i, layer in enumerate(self.layers):
 			prev_layer_output = layer.forward(prev_layer_output)
-			if i != len(self.layers) - 1:
+			if debug and i != len(self.layers) - 1:
 				num_neurons += prev_layer_output.shape[1]
 				num_dead_neurons += np.sum(np.all(prev_layer_output == 0, axis=0))
 		if debug:
@@ -102,6 +100,7 @@ class ANN:
 		elif reg_type == Regularization.L1:
 			return self.reg_const * sum(list(map((lambda layer: np.sum(np.abs(layer.W))), self.layers)))
 		elif reg_type == Regularization.ELASTIC_NET:
+			# Using the same constant for the L1 and L2 parts. These could be different if desired.
 			return self.get_reg_loss(Regularization.L1) + self.get_reg_loss(Regularization.L2)
 
 class Layer:
@@ -155,6 +154,7 @@ class Layer:
 			# Using the same constant for the L1 and L2 parts. These could be different if desired.
 			return self.d_regularization(Regularization.L1, reg_const) + self.d_regularization(Regularization.L2, reg_const)
 
+# Code in this function is copied from http://cs231n.github.io/neural-networks-case-study/#gra with just some minor differences
 def generate_data(N, D, K):
 	X = np.zeros((N*K, D)) # data points
 	y = np.zeros(N*K, dtype='uint8') # class labels for the data points
@@ -176,15 +176,15 @@ def center_around_origin(data):
 def normalize_dimensions(data):
 	return data / np.std(data, axis = 0)
 
+# Remember to center data around origin before calling this function
 def principal_component_analysis(data, reduce_to_dim):
-	# Remember to center data around origin before calling this function
 	covariance_matrix = data.T.dot(data) / data.shape[0]
 	U, S, V = np.linalg.svd(covariance_matrix)
 	data_projected_reduced = data.dot(U[:, :reduce_to_dim])
 	return data_projected_reduced
 
+# Remember to center data around origin before calling this function
 def whiten(data):
-	# Remember to center data around origin before calling this function
 	covariance_matrix = data.T.dot(data) / data.shape[0]
 	U, S, V = np.linalg.svd(covariance_matrix)
 	data_projected = X.dot(U)
