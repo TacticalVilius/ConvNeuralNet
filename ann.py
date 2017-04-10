@@ -20,10 +20,11 @@ class ANN:
 		input_dim = data_dim
 		layer_size = 100
 		classes_num = 3
+		dropout_prob = 0.5 # Probablility to drop a neuron
 		for i in range(layer_num - 1):
-			self.layers.append(Layer(layer_size, input_dim, activation_func.f, activation_func.d_f))
+			self.layers.append(Layer(layer_size, input_dim, activation_func.f, activation_func.d_f, dropout_prob))
 			input_dim = layer_size
-		output_layer = Layer(classes_num, input_dim, lambda x: x, lambda x: 1)
+		output_layer = Layer(classes_num, input_dim, lambda x: x, lambda x: 1, 0.0)
 		self.layers.append(output_layer)
 
 		self.reg_type = reg_type
@@ -54,11 +55,11 @@ class ANN:
 		return prev_layer_output
 
 	def backward(self, output, labels, debug):
+		# Gradient of the loss function based on the final output of the network
 		d_next_layer_output = self.loss_func_grad(output, labels, debug)
 		for i, layer in reversed(list(enumerate(self.layers))):
-			grad_flow = layer.backward(d_next_layer_output, self.reg_type, self.reg_const)
-			if i != 0:
-				d_next_layer_output = grad_flow.dot(layer.W.T)
+			# Gradient of the loss function based on the input to this layer
+			d_next_layer_output = layer.backward(d_next_layer_output, self.reg_type, self.reg_const)
 
 		for layer in self.layers:
 			layer.param_update(self.step_size)
@@ -66,7 +67,7 @@ class ANN:
 	'''
 	output: array with outputs from output layer. Shape (N, K) where N is # of data points and K is # of classes.
 	labels: array with the correct label for each data point. Shape (N,).
-	returns array with gradients of the loss function based on the score function for each data point. Shape (N, K).
+	returns array with gradients of the loss function based on the score function (output of the network) for each data point. Shape (N, K).
 	'''
 	def loss_func_grad(self, output, labels, debug):
 		data_points_num = output.shape[0]
@@ -105,10 +106,11 @@ class ANN:
 
 class Layer:
 
-	def __init__(self, layer_size, input_dim, activation_func, d_activation_func):
+	def __init__(self, layer_size, input_dim, activation_func, d_activation_func, dropout_prob):
 		self.size = layer_size
 		self.activation_func = activation_func
 		self.d_activation_func = d_activation_func
+		self.dropout_prob = dropout_prob
 
 		self.W = self.get_initial_weights(layer_size, input_dim)
 		self.b = self.get_initial_bias(layer_size)
@@ -131,15 +133,23 @@ class Layer:
 
 	def forward(self, input):
 		self.input = input
-		self.output = self.activation_func(self.input.dot(self.W) + self.b)
+		# Inverted dropout
+		self.dropout_mask = (np.random.rand(self.input.shape[0], self.W.shape[1]) >= self.dropout_prob) / (1 - self.dropout_prob)
+		self.output = self.activation_func(self.input.dot(self.W) + self.b) * self.dropout_mask
 		return self.output
 
+	# d_output: The gradient of the loss function based on the ouput of this layer
+	# Returns the gradient of the loss function based on the input to this layer
 	def backward(self, d_output, reg_type, reg_const):
-		d_act_func = d_output * self.d_activation_func(self.output)
-		self.d_W = self.input.T.dot(d_act_func) + self.d_regularization(reg_type, reg_const)
-		self.d_b = np.sum(d_act_func, axis=0, keepdims=True)
+		# The gradient of the loss function based on the pre-activation function output of this layer
+		d_pre_act_func = d_output * self.dropout_mask * self.d_activation_func(self.output)
+		# Thee gradient of the loss function based on the weights used in this layer
+		self.d_W = self.input.T.dot(d_pre_act_func) + self.d_regularization(reg_type, reg_const)
+		# The gradient of the loss function based on the bias used in this layer
+		self.d_b = np.sum(d_pre_act_func, axis=0, keepdims=True)
 
-		return d_act_func
+		# THe gradient of the loss function based on the input to this layer
+		return d_pre_act_func.dot(self.W.T)
 
 	def param_update(self, step_size):
 		self.W -= step_size * self.d_W
