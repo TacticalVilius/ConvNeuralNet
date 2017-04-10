@@ -170,8 +170,12 @@ def sample_data(data, labels, sample_size):
 	idx = np.random.choice(data.shape[0], sample_size, replace=False)
 	return data[idx, :], labels[idx]
 
+def center_around_point(data, point):
+	return data - point
+
 def center_around_origin(data):
-	return data - np.mean(data, axis = 0)
+	mean = np.mean(data, axis = 0)
+	return center_around_point(data, mean), mean
 
 def normalize_dimensions(data):
 	return data / np.std(data, axis = 0)
@@ -194,13 +198,6 @@ def whiten(data):
 	data_whitened = data_projected / eigenvalues
 	return data_whitened
 
-def preprocess_data(data):
-	data = center_around_origin(data)
-	#data = normalize_dimensions(data)
-	#data = principal_component_analysis(data, 2)
-	#data = whiten(data)
-	return data
-
 N = 100 # num of points per class
 D = 2 # data dimensions
 K = 3 # num of classes
@@ -210,7 +207,7 @@ plt.subplot(2, 1, 1)
 plt.scatter(X[:, 0], X[:, 1], c=y, s=40, cmap=plt.cm.Spectral)
 plt.subplot(2, 1, 2)
 '''
-X = preprocess_data(X)
+X, train_mean = center_around_origin(X)
 '''
 plt.scatter(X[:, 0], X[:, 1], c=y, s=40, cmap=plt.cm.Spectral)
 plt.show()
@@ -222,4 +219,8 @@ for i in range(10000):
 	# Mini-batch Gradient Descent
 	data_batch, corr_labels = sample_data(X, y, batch_size)
 	ann.learn_from(data_batch, corr_labels, debug=(i%1000==0))
-ann.evaluate(X,y)
+
+X_eval, y_eval = generate_data(N, D, K)
+# Important to use the mean that was computed on the training data, not the validation data
+X_eval = center_around_point(X_eval, train_mean)
+ann.evaluate(X_eval, y_eval)
